@@ -1,1 +1,36 @@
 .venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Blender backups and autosaves
+*.blend1
+*.blend2
+*.blend3
+*.blend4
+*.blend5
+
+# Blender-generated caches and renders
+cache/
+*/cache/
+*.bphys
+*.vdb
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Editor and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
