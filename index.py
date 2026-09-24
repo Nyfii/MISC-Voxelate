@@ -5,9 +5,10 @@ import re
 from collections.abc import Sequence
 from typing import Tuple, cast
 
+from mathutils import Vector
+
 
 def image_base_name(image_name: str) -> str:
-    name_without_duplicate_suffix = re.sub(r"\.\d{3}$", "", image_name)
     return os.path.splitext(re.sub(r"\.\d{3}$", "", image_name))[0]
 
 
@@ -155,6 +156,7 @@ def center_mesh(mesh: bpy.types.Object, image: bpy.types.Image) -> None:
     mesh.location.x = -width / 2
     mesh.location.y = -height / 2
 
+
 # This methods requires a "blank" material as setup as it expects
 # a PrincipledBSDF as well as a material out to be existant already
 def create_material(
@@ -164,7 +166,6 @@ def create_material(
 
     image_name: str = image_base_name(image.name)
     material: bpy.types.Material = bpy.data.materials.new(name=image_name)
-    material.use_nodes = True
 
     node_tree: bpy.types.NodeTree = cast(bpy.types.NodeTree, material.node_tree)
     nodes: bpy.types.Nodes = node_tree.nodes
@@ -181,11 +182,13 @@ def create_material(
     )
 
     image_texture_node.image = image
-    image_texture_node.location = (-400, 0)
-    roughness_socket: bpy.types.NodeSocketFloat = cast(
+    image_texture_node.interpolation = "Closest"
+    image_texture_node.location = (-800, 0)
+
+    # This variable is probably useless but without the cast the static analysis is complaining
+    cast(
         bpy.types.NodeSocketFloat, principled_node.inputs["Roughness"]
-    )
-    roughness_socket.default_value = 0.8
+    ).default_value = 0.8
 
     links.new(
         image_texture_node.outputs["Color"],
@@ -202,12 +205,73 @@ def create_material(
     return material
 
 
+def create_uv(
+    object: bpy.types.Object, image: bpy.types.Image
+) -> bpy.types.MeshUVLoopLayer:
+    width, height, _ = get_image_data(image)
+    mesh_data: bpy.types.Mesh = cast(bpy.types.Mesh, object.data)
+    uv_layer: bpy.types.MeshUVLoopLayer = mesh_data.uv_layers.new(name=image.name)
+    # For the Side-faces there is some z-fighting since the polygon is on the edge
+    # between the 0-Alpha and 1-Alpha Pixels. This microstep which nudges the polygon to the
+    # "Colorful" pixel should fix it. The size is arbitrary and can probably be even smaller
+    # In any case the UV map is fucked for later usage. This also makes the function waaaay
+    # more complicated than it probably should be
+    microstep: float = 0.001
+
+    def is_opaque(x: int, y: int) -> bool:
+        # I hope that the image_to_transparency_mask call here gets optimzied away somehow
+        # Otherwise this is the peak inefficient
+        return (
+            0 <= x < width
+            and 0 <= y < height
+            and image_to_transparency_mask(image)[height - y - 1][x]
+        )
+
+    for polygon in mesh_data.polygons:
+        coordinates: list[Vector] = [mesh_data.vertices[index].co for index in polygon.vertices]
+        min_x: int = int(min(vertex.x for vertex in coordinates))
+        min_y: int = int(min(vertex.y for vertex in coordinates))
+        max_x: int = int(max(vertex.x for vertex in coordinates))
+        max_y: int = int(max(vertex.y for vertex in coordinates))
+
+        if abs(polygon.normal.x) > 0.5:
+            pixel_x: int = min_x if polygon.normal.x < 0 else max_x - 1
+            pixel_y: int = min_y
+        elif abs(polygon.normal.y) > 0.5:
+            pixel_x: int = min_x
+            pixel_y: int = min_y if polygon.normal.y < 0 else max_y - 1
+        else:
+            pixel_x: int = min_x
+            pixel_y: int = min_y
+
+        for loop_index in range(
+            polygon.loop_start, polygon.loop_start + polygon.loop_total
+        ):
+            x: float = mesh_data.vertices[mesh_data.loops[loop_index].vertex_index].co.x
+            y: float = mesh_data.vertices[mesh_data.loops[loop_index].vertex_index].co.y
+
+            # Microsteps
+            if x == pixel_x and not is_opaque(pixel_x - 1, pixel_y):
+                x += microstep
+            elif x == pixel_x + 1 and not is_opaque(pixel_x + 1, pixel_y):
+                x -= microstep
+            if y == pixel_y and not is_opaque(pixel_x, pixel_y - 1):
+                y += microstep
+            elif y == pixel_y + 1 and not is_opaque(pixel_x, pixel_y + 1):
+                y -= microstep
+
+            uv_layer.data[loop_index].uv = (x / width, y / height)
+
+    return uv_layer
+
+
 def main() -> None:
     image: bpy.types.Image = load_image("ExampleImage.png")
     image_name: str = image_base_name(image.name)
     mesh: bpy.types.Object = generate_mesh_from_transparency_mask(image, image_name)
     center_mesh(mesh, image)
     create_material(mesh, image)
+    create_uv(mesh, image)
 
 
 if __name__ == "__main__":
