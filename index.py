@@ -3,7 +3,7 @@ import bmesh
 import os
 import re
 from collections.abc import Sequence
-from typing import Tuple, cast
+from typing import cast
 
 from mathutils import Vector
 
@@ -19,9 +19,13 @@ def load_image(filename: str) -> bpy.types.Image:
     )
 
 
-def get_image_data(image: bpy.types.Image) -> Tuple[int, int, Sequence[float]]:
-    # TODO: Currenlty assumes image has accessible RGBA pixel data and supports Transparency (Not sure if all loaded images automatically get added an alpha channel
-    return (image.size[0], image.size[1], cast(Sequence[float], image.pixels))
+def get_image_data(image: bpy.types.Image) -> tuple[int, int, Sequence[float]]:
+    # TODO: Currently assumes image has accessible RGBA pixel data and supports Transparency (Not sure if all loaded images automatically get added an alpha channel)
+
+    # Some sort of weird update introduced a regression here. Theoretically for Blender itself
+    # It works to just unpack the sequence directly, however Pyright complains. I dont like red squiggly lines
+    size: Sequence[int] = cast(Sequence[int], image.size)
+    return size[0], size[1], cast(Sequence[float], image.pixels)
 
 
 def image_to_transparency_mask(image: bpy.types.Image) -> list[list[bool]]:
@@ -157,7 +161,7 @@ def center_mesh(mesh: bpy.types.Object, image: bpy.types.Image) -> None:
     mesh.location.y = -height / 2
 
 
-# This methods requires a "blank" material as setup as it expects
+# This method requires a "blank" material as setup as it expects
 # a PrincipledBSDF as well as a material out to be existant already
 def create_material(
     object: bpy.types.Object, image: bpy.types.Image
@@ -171,6 +175,8 @@ def create_material(
     nodes: bpy.types.Nodes = node_tree.nodes
     links: bpy.types.NodeLinks = node_tree.links
 
+    # This is also some sort of Stub problems with the Blender 5.1 going up from 4.3
+    # There has to be a better way to write this to make the LSP happy, but I cannot be bothered to find it.
     image_texture_node: bpy.types.ShaderNodeTexImage = cast(
         bpy.types.ShaderNodeTexImage, nodes.new("ShaderNodeTexImage")
     )
@@ -180,24 +186,44 @@ def create_material(
     output_node: bpy.types.ShaderNodeOutputMaterial = cast(
         bpy.types.ShaderNodeOutputMaterial, nodes.get("Material Output")
     )
+    principled_inputs: bpy.types.NodeInputs = cast(
+        bpy.types.NodeInputs, principled_node.inputs
+    )
+    principled_outputs: bpy.types.NodeOutputs = cast(
+        bpy.types.NodeOutputs, principled_node.outputs
+    )
+    texture_outputs: bpy.types.NodeOutputs = cast(
+        bpy.types.NodeOutputs, image_texture_node.outputs
+    )
+    material_inputs: bpy.types.NodeInputs = cast(
+        bpy.types.NodeInputs, output_node.inputs
+    )
 
     image_texture_node.image = image
     image_texture_node.interpolation = "Closest"
     image_texture_node.location = (-800, 0)
 
-    # This variable is probably useless but without the cast the static analysis is complaining
-    cast(
-        bpy.types.NodeSocketFloat, principled_node.inputs["Roughness"]
-    ).default_value = 0.8
+    # Same 5.1 problem here as on the top part of the method
+    roughness_socket: bpy.types.NodeSocketFloat = cast(
+        bpy.types.NodeSocketFloat, principled_inputs.get("Roughness")
+    )
+    roughness_socket.default_value = 0.8
 
-    links.new(
-        image_texture_node.outputs["Color"],
-        principled_node.inputs["Base Color"],
+    base_color_socket: bpy.types.NodeSocket = cast(
+        bpy.types.NodeSocket, principled_inputs.get("Base Color")
     )
-    links.new(
-        principled_node.outputs["BSDF"],
-        output_node.inputs["Surface"],
+    color_output_socket: bpy.types.NodeSocket = cast(
+        bpy.types.NodeSocket, texture_outputs.get("Color")
     )
+    bsdf_output_socket: bpy.types.NodeSocket = cast(
+        bpy.types.NodeSocket, principled_outputs.get("BSDF")
+    )
+    surface_input_socket: bpy.types.NodeSocket = cast(
+        bpy.types.NodeSocket, material_inputs.get("Surface")
+    )
+
+    links.new(color_output_socket, base_color_socket)
+    links.new(bsdf_output_socket, surface_input_socket)
 
     mesh_data: bpy.types.Mesh = cast(bpy.types.Mesh, object.data)
     mesh_data.materials.append(material)
@@ -220,7 +246,7 @@ def create_uv(
 
     def is_opaque(x: int, y: int) -> bool:
         # I hope that the image_to_transparency_mask call here gets optimzied away somehow
-        # Otherwise this is the peak inefficient
+        # otherwise this is the peak inefficient
         return (
             0 <= x < width
             and 0 <= y < height
@@ -228,7 +254,11 @@ def create_uv(
         )
 
     for polygon in mesh_data.polygons:
-        coordinates: list[Vector] = [mesh_data.vertices[index].co for index in polygon.vertices]
+        # This also is some sort of weird change in blender 5.1 to make the typehints happy.
+        # It should work to just pass this without the cast.
+        coordinates: list[Vector] = [
+            mesh_data.vertices[index].co for index in cast(Sequence[int], polygon.vertices)
+        ]
         min_x: int = int(min(vertex.x for vertex in coordinates))
         min_y: int = int(min(vertex.y for vertex in coordinates))
         max_x: int = int(max(vertex.x for vertex in coordinates))
