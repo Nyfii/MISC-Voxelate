@@ -1,0 +1,9 @@
+schema_version = "1.0.0"
+id = "voxelate"
+version = "0.1.0"
+name = "Voxelate"
+tagline = "Create voxel meshes from images"
+maintainer = "Nyfii"
+type = "add-on"
+blender_version_min = "5.1.0" # Could be lower idk
+license = ["SPDX:MIT"]
