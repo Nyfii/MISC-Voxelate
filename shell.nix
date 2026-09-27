@@ -53,5 +53,6 @@ let
 in pkgs.mkShell {
     packages = [
         python
+        pkgs.zip
     ];
 }

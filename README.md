@@ -11,3 +11,18 @@ Be aware that the imported mesh will have a maniform grid-like topology, however
 
 1. Package the `src/` to a `.zip` file with the folder itself being the root and import it into Blender (or get it from the releases if I have set them up)
 2. In Blender import the addon from local disc (open **Edit -> Preferences -> Add-ons -> The Arrow Dropdown in the top corner -> Install from disc** and select the ZIP-folder). Enable it if not enabled automatically.
+
+## Usage
+
+In the 3D Viewporet, you can create a new Mesh with **Add (Ctrl + A) -> Image -> Image as Voxelmesh** and then select the image.
+
+This currently supports a bunch of file formats even ones that don't make sense as they don't support transparency like `.jpeg`. In theory it should support `.bmp`, `.exr`, `.hdr`, `.jp(e)g`, `.png`, `.tga`, `.tif(f)`, `.webp`, however I have only really tested `.png`.
+
+## ToDo
+
+Here are some thing I would like to add whenever I find time for it. I actively update this list, so if notice that an entry disappeared I either added it or thought the idea was stupid.
+
+- Centering the pivot of the object
+- Adding import options for the name, material and UV offset
+- Improving performance
+- Adjustable thickness
